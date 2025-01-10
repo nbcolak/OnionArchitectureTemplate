@@ -1,42 +1,27 @@
 namespace OnionArchitectureTemplateConsole;
-using System.IO;
 
 public static class SharedLayerCreator
 {
     public static void CreateSharedLayer(string solutionName)
     {
-        string sharedPath = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Shared", "Responses");
-        Directory.CreateDirectory(sharedPath);
+        string sharedPath = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Shared");
+        string responsesPath = Path.Combine(sharedPath, "Responses");
+        string interfacesPath = Path.Combine(sharedPath, "Interfaces");
+
+        // Klasörleri oluştur
+        Directory.CreateDirectory(responsesPath);
+        Directory.CreateDirectory(interfacesPath);
 
         // Response<T> sınıfını oluştur
-        File.WriteAllText(Path.Combine(sharedPath, "Response.cs"),
+        File.WriteAllText(Path.Combine(responsesPath, "Response.cs"),
             @$"namespace {solutionName}.Shared.Responses
 {{
     public class Response<T>
     {{
-        /// <summary>
-        /// İşlem sonucunun başarılı olup olmadığını belirtir.
-        /// </summary>
         public bool Success {{ get; set; }}
-
-        /// <summary>
-        /// İşlem sonucu dönen veri (varsa).
-        /// </summary>
         public T Data {{ get; set; }}
-
-        /// <summary>
-        /// İşlemle ilgili hata mesajları (varsa).
-        /// </summary>
         public List<string> Errors {{ get; set; }} = new List<string>();
-
-        /// <summary>
-        /// HTTP durum kodu veya özel bir durum kodu.
-        /// </summary>
         public int StatusCode {{ get; set; }}
-
-        /// <summary>
-        /// Genel bir mesaj (başarı veya hata için kullanılabilir).
-        /// </summary>
         public string Message {{ get; set; }}
 
         public Response(T data, bool success, int statusCode, string message = null)
@@ -54,6 +39,37 @@ public static class SharedLayerCreator
             StatusCode = statusCode;
             Message = message;
         }}
+    }}
+}}");
+
+        // IRepository<T> interface'ini oluştur
+        File.WriteAllText(Path.Combine(interfacesPath, "IRepository.cs"),
+            @$"using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace {solutionName}.Shared.Interfaces
+{{
+    public interface IRepository<T> where T : class
+    {{
+        Task<T> GetByIdAsync(int id);
+        Task<IEnumerable<T>> GetAllAsync();
+        Task AddAsync(T entity);
+        Task UpdateAsync(T entity);
+        Task DeleteAsync(T entity);
+    }}
+}}");
+
+        // IUnitOfWork interface'ini oluştur
+        File.WriteAllText(Path.Combine(interfacesPath, "IUnitOfWork.cs"),
+            @$"using System;
+using System.Threading.Tasks;
+
+namespace {solutionName}.Shared.Interfaces
+{{
+    public interface IUnitOfWork : IDisposable
+    {{
+        IRepository<T> Repository<T>() where T : class;
+        Task SaveChangesAsync();
     }}
 }}");
     }
