@@ -1,5 +1,4 @@
-using System.IO;
-using OnionArchitectureTemplateConsole;
+namespace OnionArchitectureTemplateConsole;
 
 public static class ApplicationLayerCreator
 {
@@ -9,6 +8,9 @@ public static class ApplicationLayerCreator
         Directory.CreateDirectory(Path.Combine(applicationPath, "Commands"));
         Directory.CreateDirectory(Path.Combine(applicationPath, "Queries"));
         Directory.CreateDirectory(Path.Combine(applicationPath, "DTOs"));
+        Directory.CreateDirectory(Path.Combine(applicationPath, "Mappings"));
+        Directory.CreateDirectory(Path.Combine(applicationPath, "Validators"));
+        Directory.CreateDirectory(Path.Combine(applicationPath, "Tests"));
 
         // DTO: ProductDto.cs
         File.WriteAllText(Path.Combine(applicationPath, "DTOs", "ProductDto.cs"),
@@ -22,7 +24,7 @@ public static class ApplicationLayerCreator
     }}
 }}");
 
-        // CreateProductCommand.cs
+        // Command: CreateProductCommand.cs
         File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommand.cs"),
             @$"using MediatR;
 using {solutionName}.Shared.Responses;
@@ -36,9 +38,11 @@ namespace {solutionName}.Application.Features.Products.Commands
     }}
 }}");
 
-        // CreateProductCommandHandler.cs
+        // Command Handler: CreateProductCommandHandler.cs
         File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommandHandler.cs"),
             @$"using MediatR;
+using AutoMapper;
+using FluentValidation;
 using {solutionName}.Domain.Entities;
 using {solutionName}.Shared.Interfaces;
 using {solutionName}.Shared.Responses;
@@ -48,19 +52,27 @@ namespace {solutionName}.Application.Features.Products.Commands
     public class CreateProductCommandHandler : IRequestHandler<CreateProductCommand, Response<int>>
     {{
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
+        private readonly IValidator<CreateProductCommand> _validator;
 
-        public CreateProductCommandHandler(IUnitOfWork unitOfWork)
+        public CreateProductCommandHandler(IUnitOfWork unitOfWork, IMapper mapper, IValidator<CreateProductCommand> validator)
         {{
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
+            _validator = validator;
         }}
 
         public async Task<Response<int>> Handle(CreateProductCommand request, CancellationToken cancellationToken)
         {{
-            var product = new Product
+            var validationResult = await _validator.ValidateAsync(request, cancellationToken);
+
+            if (!validationResult.IsValid)
             {{
-                Name = request.Name,
-                Price = request.Price
-            }};
+                var errors = validationResult.Errors.Select(e => e.ErrorMessage).ToList();
+                return new Response<int>(errors, 400, ""Validation failed"");
+            }}
+
+            var product = _mapper.Map<Product>(request);
 
             await _unitOfWork.Repository<Product>().AddAsync(product);
             await _unitOfWork.SaveChangesAsync();
@@ -70,7 +82,7 @@ namespace {solutionName}.Application.Features.Products.Commands
     }}
 }}");
 
-        // GetProductQuery.cs
+        // Query: GetProductQuery.cs
         File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQuery.cs"),
             @$"using MediatR;
 using {solutionName}.Shared.Responses;
@@ -84,9 +96,10 @@ namespace {solutionName}.Application.Features.Products.Queries
     }}
 }}");
 
-        // GetProductQueryHandler.cs
+        // Query Handler: GetProductQueryHandler.cs
         File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQueryHandler.cs"),
             @$"using MediatR;
+using AutoMapper;
 using {solutionName}.Domain.Entities;
 using {solutionName}.Shared.Interfaces;
 using {solutionName}.Shared.Responses;
@@ -97,10 +110,12 @@ namespace {solutionName}.Application.Features.Products.Queries
     public class GetProductQueryHandler : IRequestHandler<GetProductQuery, Response<ProductDto>>
     {{
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
 
-        public GetProductQueryHandler(IUnitOfWork unitOfWork)
+        public GetProductQueryHandler(IUnitOfWork unitOfWork, IMapper mapper)
         {{
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
         }}
 
         public async Task<Response<ProductDto>> Handle(GetProductQuery request, CancellationToken cancellationToken)
@@ -110,72 +125,121 @@ namespace {solutionName}.Application.Features.Products.Queries
             if (product == null)
                 return new Response<ProductDto>(null, false, 404, ""Product not found"");
 
-            var productDto = new ProductDto
-            {{
-                Id = product.Id,
-                Name = product.Name,
-                Price = product.Price
-            }};
+            var productDto = _mapper.Map<ProductDto>(product);
 
             return new Response<ProductDto>(productDto, true, 200, ""Product retrieved successfully"");
         }}
     }}
 }}");
 
-        // GetProductsQuery.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductsQuery.cs"),
-            @$"using MediatR;
-using {solutionName}.Shared.Responses;
-using System.Collections.Generic;
-using {solutionName}.Application.Features.Products.DTOs;
+        // FluentValidation Validator: ProductValidator.cs
+        File.WriteAllText(Path.Combine(applicationPath, "Validators", "ProductValidator.cs"),
+            @$"using FluentValidation;
 
-namespace {solutionName}.Application.Features.Products.Queries
+namespace {solutionName}.Application.Features.Products.Validators
 {{
-    public class GetProductsQuery : IRequest<Response<List<ProductDto>>>
+    public class ProductValidator : AbstractValidator<{solutionName}.Application.Features.Products.DTOs.ProductDto>
     {{
+        public ProductValidator()
+        {{
+            RuleFor(product => product.Name)
+                .NotEmpty().WithMessage(""Product name cannot be empty"")
+                .MaximumLength(250).WithMessage(""Product name cannot exceed 250 characters"");
+
+            RuleFor(product => product.Price)
+                .GreaterThan(0).WithMessage(""Product price must be greater than zero"");
+        }}
     }}
 }}");
 
-        // GetProductsQueryHandler.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductsQueryHandler.cs"),
-            @$"using MediatR;
+        // Unit Test: CreateProductCommandHandlerTests.cs
+        File.WriteAllText(Path.Combine(applicationPath, "Tests", "CreateProductCommandHandlerTests.cs"),
+            @$"using Xunit;
+using Moq;
+using FluentValidation;
+using FluentValidation.Results;
+using AutoMapper;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using {solutionName}.Domain.Entities;
 using {solutionName}.Shared.Interfaces;
 using {solutionName}.Shared.Responses;
-using {solutionName}.Application.Features.Products.DTOs;
+using {solutionName}.Application.Features.Products.Commands;
 
-namespace {solutionName}.Application.Features.Products.Queries
+namespace {solutionName}.Application.Tests.Features.Products.Commands
 {{
-    public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, Response<List<ProductDto>>>
+    public class CreateProductCommandHandlerTests
     {{
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly Mock<IUnitOfWork> _unitOfWorkMock;
+        private readonly Mock<IMapper> _mapperMock;
+        private readonly Mock<IValidator<CreateProductCommand>> _validatorMock;
+        private readonly CreateProductCommandHandler _handler;
 
-        public GetProductsQueryHandler(IUnitOfWork unitOfWork)
+        public CreateProductCommandHandlerTests()
         {{
-            _unitOfWork = unitOfWork;
+            _unitOfWorkMock = new Mock<IUnitOfWork>();
+            _mapperMock = new Mock<IMapper>();
+            _validatorMock = new Mock<IValidator<CreateProductCommand>>();
+            _handler = new CreateProductCommandHandler(
+                _unitOfWorkMock.Object,
+                _mapperMock.Object,
+                _validatorMock.Object
+            );
         }}
 
-        public async Task<Response<List<ProductDto>>> Handle(GetProductsQuery request, CancellationToken cancellationToken)
+        [Fact]
+        public async Task Handle_ValidRequest_ReturnsSuccessResponse()
         {{
-            var products = await _unitOfWork.Repository<Product>().GetAllAsync();
-
-            var productDtos = products.Select(product => new ProductDto
+            // Arrange
+            var command = new CreateProductCommand
             {{
-                Id = product.Id,
-                Name = product.Name,
-                Price = product.Price
-            }}).ToList();
+                Name = ""Test Product"",
+                Price = 100
+            }};
 
-            return new Response<List<ProductDto>>(productDtos, true, 200, ""Products retrieved successfully"");
+            var product = new Product
+            {{
+                Id = 1,
+                Name = command.Name,
+                Price = command.Price
+            }};
+
+            _validatorMock
+                .Setup(v => v.ValidateAsync(command, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+
+            _mapperMock
+                .Setup(m => m.Map<Product>(command))
+                .Returns(product);
+
+            _unitOfWorkMock
+                .Setup(u => u.Repository<Product>().AddAsync(It.IsAny<Product>()))
+                .Returns(Task.CompletedTask);
+
+            _unitOfWorkMock
+                .Setup(u => u.SaveChangesAsync())
+                .Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _handler.Handle(command, CancellationToken.None);
+
+            // Assert
+            Assert.True(result.Success);
+            Assert.Equal(201, result.StatusCode);
+            Assert.Equal(""Product created successfully"", result.Message);
+            Assert.Equal(product.Id, result.Data);
         }}
     }}
 }}");
 
-        // MediatR NuGet Paketlerini Ekle
+        // Gerekli NuGet Paketlerini Ekle
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation", isWindows);
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation.DependencyInjectionExtensions", isWindows);
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package AutoMapper", isWindows);
         SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package MediatR", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package MediatR.Extensions.Microsoft.DependencyInjection", isWindows);
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package Moq", isWindows);
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package xunit", isWindows);
 
         // **Domain** ve **Shared** referanslarını ekle
         SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj reference {solutionName}.Domain/{solutionName}.Domain.csproj", isWindows);
