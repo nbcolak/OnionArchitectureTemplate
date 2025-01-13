@@ -14,30 +14,36 @@ public static class SharedLayerCreator
 
         // Response<T> sınıfını oluştur
         File.WriteAllText(Path.Combine(responsesPath, "Response.cs"),
-            @$"namespace {solutionName}.Shared.Responses
+            @$"using System.Collections.Generic;
+
+namespace {solutionName}.Shared.Responses
 {{
     public class Response<T>
     {{
         public bool Success {{ get; set; }}
-        public T Data {{ get; set; }}
+        public T? Data {{ get; set; }} // Nullable olarak tanımlandı
         public List<string> Errors {{ get; set; }} = new List<string>();
         public int StatusCode {{ get; set; }}
-        public string Message {{ get; set; }}
+        public string? Message {{ get; set; }}
 
-        public Response(T data, bool success, int statusCode, string message = null)
+        // Data içeren başarılı bir yanıt için
+        public Response(T? data, bool success, int statusCode, string? message = null)
         {{
             Data = data;
             Success = success;
             StatusCode = statusCode;
             Message = message;
+            Errors = new List<string>();
         }}
 
-        public Response(List<string> errors, bool success, int statusCode, string message = null)
+        // Hataları içeren bir yanıt için
+        public Response(List<string> errors, int statusCode, string? message = null)
         {{
             Errors = errors;
-            Success = success;
+            Success = false;
             StatusCode = statusCode;
             Message = message;
+            Data = default; // Null Data
         }}
     }}
 }}");
@@ -51,7 +57,7 @@ namespace {solutionName}.Shared.Interfaces
 {{
     public interface IRepository<T> where T : class
     {{
-        Task<T> GetByIdAsync(int id);
+        Task<T?> GetByIdAsync(int id); // Nullable olarak döndürülüyor
         Task<IEnumerable<T>> GetAllAsync();
         Task AddAsync(T entity);
         Task UpdateAsync(T entity);

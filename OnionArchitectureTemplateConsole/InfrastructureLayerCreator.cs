@@ -6,6 +6,7 @@ public static class InfrastructureLayerCreator
     public static void CreateInfrastructureLayer(string solutionName, bool isWindows)
     {
         string infrastructurePath = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Infrastructure", "Persistence");
+        string infrastructureRoot = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Infrastructure");
         Directory.CreateDirectory(infrastructurePath);
 
         // AppDbContext oluşturuluyor
@@ -112,9 +113,36 @@ namespace {solutionName}.Infrastructure.Persistence
     }}
 }}");
 
-        // Entity Framework paketlerini ekle
+        // InfrastructureServiceRegistration oluşturuluyor
+        File.WriteAllText(Path.Combine(infrastructureRoot, "InfrastructureServiceRegistration.cs"),
+            @$"using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using {solutionName}.Infrastructure.Persistence;
+using {solutionName}.Shared.Interfaces;
+
+namespace {solutionName}.Infrastructure
+{{
+    public static class InfrastructureServiceRegistration
+    {{
+        public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+        {{
+            // DbContext'i DI konteynırına ekliyoruz
+            services.AddDbContext<AppDbContext>(options =>
+                options.UseNpgsql(configuration.GetConnectionString(""DefaultConnection"")));
+
+            // UnitOfWork ve Repository bağımlılıklarını ekliyoruz
+            services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+            return services;
+        }}
+    }}
+}}");
+
+        // NuGet paketlerini ekle
         SolutionCreator.RunCommand($"dotnet add {solutionName}.Infrastructure/{solutionName}.Infrastructure.csproj package Microsoft.EntityFrameworkCore", isWindows);
         SolutionCreator.RunCommand($"dotnet add {solutionName}.Infrastructure/{solutionName}.Infrastructure.csproj package Microsoft.EntityFrameworkCore.SqlServer", isWindows);
+        SolutionCreator.RunCommand($"dotnet add {solutionName}.Infrastructure/{solutionName}.Infrastructure.csproj package Npgsql.EntityFrameworkCore.PostgreSQL", isWindows);
 
         // **Domain** referansını ekle
         SolutionCreator.RunCommand($"dotnet add {solutionName}.Infrastructure/{solutionName}.Infrastructure.csproj reference {solutionName}.Domain/{solutionName}.Domain.csproj", isWindows);
