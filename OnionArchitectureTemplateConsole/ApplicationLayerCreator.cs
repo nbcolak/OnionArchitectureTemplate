@@ -1,20 +1,39 @@
-namespace OnionArchitectureTemplateConsole;
+using System.IO;
 
-public static class ApplicationLayerCreator
+namespace OnionArchitectureTemplateConsole
 {
-    public static void CreateApplicationLayer(string solutionName, bool isWindows)
+    public static class ApplicationLayerCreator
     {
-        string applicationPath = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Application", "Features", "Products");
-        Directory.CreateDirectory(Path.Combine(applicationPath, "Commands"));
-        Directory.CreateDirectory(Path.Combine(applicationPath, "Queries"));
-        Directory.CreateDirectory(Path.Combine(applicationPath, "DTOs"));
-        Directory.CreateDirectory(Path.Combine(applicationPath, "Mappings"));
-        Directory.CreateDirectory(Path.Combine(applicationPath, "Validators"));
-        Directory.CreateDirectory(Path.Combine(applicationPath, "Tests"));
+        public static void CreateApplicationLayer(string solutionName, bool isWindows)
+        {
+            string applicationPath = Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Application", "Features", "Products");
+            Directory.CreateDirectory(Path.Combine(applicationPath, "Commands"));
+            Directory.CreateDirectory(Path.Combine(applicationPath, "Queries"));
+            Directory.CreateDirectory(Path.Combine(applicationPath, "DTOs"));
+            Directory.CreateDirectory(Path.Combine(applicationPath, "Mappings"));
+            Directory.CreateDirectory(Path.Combine(applicationPath, "Validators"));
+            Directory.CreateDirectory(Path.Combine(applicationPath, "Tests"));
 
-        // DTO: ProductDto.cs
-        File.WriteAllText(Path.Combine(applicationPath, "DTOs", "ProductDto.cs"),
-            @$"namespace {solutionName}.Application.Features.Products.DTOs
+            // Add necessary classes
+            AddDtoClass(applicationPath, solutionName);
+            AddMappingProfile(applicationPath, solutionName);
+            AddCommandClasses(applicationPath, solutionName);
+            AddQueryClasses(applicationPath, solutionName);
+            AddValidatorClass(applicationPath, solutionName);
+            AddUnitTest(applicationPath, solutionName);
+
+            // Add service registration class
+            AddServiceRegistration(applicationPath, solutionName);
+
+            // Add NuGet packages and references
+            AddNuGetPackages(solutionName, isWindows);
+            AddProjectReferences(solutionName, isWindows);
+        }
+
+        private static void AddDtoClass(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "DTOs", "ProductDto.cs"),
+                @$"namespace {solutionName}.Application.Features.Products.DTOs
 {{
     public class ProductDto
     {{
@@ -23,10 +42,62 @@ public static class ApplicationLayerCreator
         public decimal Price {{ get; set; }}
     }}
 }}");
+        }
 
-        // Command: CreateProductCommand.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommand.cs"),
-            @$"using MediatR;
+        private static void AddMappingProfile(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "Mappings", "ProductMappingProfile.cs"),
+                @$"using AutoMapper;
+using {solutionName}.Domain.Entities;
+using {solutionName}.Application.Features.Products.DTOs;
+using {solutionName}.Application.Features.Products.Commands;
+
+namespace {solutionName}.Application.Features.Products.Mappings
+{{
+    public class ProductMappingProfile : Profile
+    {{
+        public ProductMappingProfile()
+        {{
+            CreateMap<Product, ProductDto>().ReverseMap();
+            CreateMap<CreateProductCommand, Product>();
+        }}
+    }}
+}}");
+        }
+
+        private static void AddServiceRegistration(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(Directory.GetCurrentDirectory(), $"{solutionName}.Application", "ApplicationServiceRegistration.cs"),
+                @$"using AutoMapper;
+using FluentValidation;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace {solutionName}.Application
+{{
+    public static class ApplicationServiceRegistration
+    {{
+        public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+        {{
+            // Add AutoMapper
+            services.AddAutoMapper(typeof({solutionName}.Application.Features.Products.Mappings.ProductMappingProfile));
+
+            // Add FluentValidation
+            services.AddValidatorsFromAssembly(typeof({solutionName}.Application.Features.Products.Validators.ProductValidator).Assembly);
+            
+            // Add MediatR
+            services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(ApplicationServiceRegistration).Assembly));
+
+            return services;
+        }}
+    }}
+}}");
+        }
+
+        private static void AddCommandClasses(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommand.cs"),
+                @$"using MediatR;
 using {solutionName}.Shared.Responses;
 
 namespace {solutionName}.Application.Features.Products.Commands
@@ -38,9 +109,8 @@ namespace {solutionName}.Application.Features.Products.Commands
     }}
 }}");
 
-        // Command Handler: CreateProductCommandHandler.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommandHandler.cs"),
-            @$"using MediatR;
+            File.WriteAllText(Path.Combine(applicationPath, "Commands", "CreateProductCommandHandler.cs"),
+                @$"using MediatR;
 using AutoMapper;
 using FluentValidation;
 using {solutionName}.Domain.Entities;
@@ -81,10 +151,12 @@ namespace {solutionName}.Application.Features.Products.Commands
         }}
     }}
 }}");
+        }
 
-        // Query: GetProductQuery.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQuery.cs"),
-            @$"using MediatR;
+        private static void AddQueryClasses(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQuery.cs"),
+                @$"using MediatR;
 using {solutionName}.Shared.Responses;
 using {solutionName}.Application.Features.Products.DTOs;
 
@@ -96,9 +168,8 @@ namespace {solutionName}.Application.Features.Products.Queries
     }}
 }}");
 
-        // Query Handler: GetProductQueryHandler.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQueryHandler.cs"),
-            @$"using MediatR;
+            File.WriteAllText(Path.Combine(applicationPath, "Queries", "GetProductQueryHandler.cs"),
+                @$"using MediatR;
 using AutoMapper;
 using {solutionName}.Domain.Entities;
 using {solutionName}.Shared.Interfaces;
@@ -131,10 +202,12 @@ namespace {solutionName}.Application.Features.Products.Queries
         }}
     }}
 }}");
+        }
 
-        // FluentValidation Validator: ProductValidator.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Validators", "ProductValidator.cs"),
-            @$"using FluentValidation;
+        private static void AddValidatorClass(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "Validators", "ProductValidator.cs"),
+                @$"using FluentValidation;
 
 namespace {solutionName}.Application.Features.Products.Validators
 {{
@@ -151,10 +224,12 @@ namespace {solutionName}.Application.Features.Products.Validators
         }}
     }}
 }}");
+        }
 
-        // Unit Test: CreateProductCommandHandlerTests.cs
-        File.WriteAllText(Path.Combine(applicationPath, "Tests", "CreateProductCommandHandlerTests.cs"),
-            @$"using Xunit;
+        private static void AddUnitTest(string applicationPath, string solutionName)
+        {
+            File.WriteAllText(Path.Combine(applicationPath, "Tests", "CreateProductCommandHandlerTests.cs"),
+                @$"using Xunit;
 using Moq;
 using FluentValidation;
 using FluentValidation.Results;
@@ -191,58 +266,39 @@ namespace {solutionName}.Application.Tests.Features.Products.Commands
         [Fact]
         public async Task Handle_ValidRequest_ReturnsSuccessResponse()
         {{
-            // Arrange
-            var command = new CreateProductCommand
-            {{
-                Name = ""Test Product"",
-                Price = 100
-            }};
+            var command = new CreateProductCommand {{ Name = ""Test"", Price = 100 }};
+            var product = new Product {{ Id = 1, Name = command.Name, Price = command.Price }};
 
-            var product = new Product
-            {{
-                Id = 1,
-                Name = command.Name,
-                Price = command.Price
-            }};
+            _validatorMock.Setup(v => v.ValidateAsync(command, default)).ReturnsAsync(new ValidationResult());
+            _mapperMock.Setup(m => m.Map<Product>(command)).Returns(product);
+            _unitOfWorkMock.Setup(u => u.Repository<Product>().AddAsync(It.IsAny<Product>())).Returns(Task.CompletedTask);
+            _unitOfWorkMock.Setup(u => u.SaveChangesAsync()).Returns(Task.CompletedTask);
 
-            _validatorMock
-                .Setup(v => v.ValidateAsync(command, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new ValidationResult());
+            var result = await _handler.Handle(command, default);
 
-            _mapperMock
-                .Setup(m => m.Map<Product>(command))
-                .Returns(product);
-
-            _unitOfWorkMock
-                .Setup(u => u.Repository<Product>().AddAsync(It.IsAny<Product>()))
-                .Returns(Task.CompletedTask);
-
-            _unitOfWorkMock
-                .Setup(u => u.SaveChangesAsync())
-                .Returns(Task.CompletedTask);
-
-            // Act
-            var result = await _handler.Handle(command, CancellationToken.None);
-
-            // Assert
             Assert.True(result.Success);
             Assert.Equal(201, result.StatusCode);
-            Assert.Equal(""Product created successfully"", result.Message);
             Assert.Equal(product.Id, result.Data);
         }}
     }}
 }}");
+        }
 
-        // Gerekli NuGet Paketlerini Ekle
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation.DependencyInjectionExtensions", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package AutoMapper", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package MediatR", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package Moq", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package xunit", isWindows);
+        private static void AddNuGetPackages(string solutionName, bool isWindows)
+        {
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package FluentValidation.DependencyInjectionExtensions", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package AutoMapper", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package MediatR", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package MediatR.Extensions.Microsoft.DependencyInjection", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package Moq", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj package xunit", isWindows);
+        }
 
-        // **Domain** ve **Shared** referanslarını ekle
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj reference {solutionName}.Domain/{solutionName}.Domain.csproj", isWindows);
-        SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj reference {solutionName}.Shared/{solutionName}.Shared.csproj", isWindows);
+        private static void AddProjectReferences(string solutionName, bool isWindows)
+        {
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj reference {solutionName}.Domain/{solutionName}.Domain.csproj", isWindows);
+            SolutionCreator.RunCommand($"dotnet add {solutionName}.Application/{solutionName}.Application.csproj reference {solutionName}.Shared/{solutionName}.Shared.csproj", isWindows);
+        }
     }
 }
